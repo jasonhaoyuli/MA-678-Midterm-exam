@@ -1,0 +1,136 @@
+---
+title: "Midterm Exam"
+author: "Haoyu Li"
+date: "11/2/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Instruction
+
+This is your midterm exam that you are expected to work on it alone.  You may NOT  discuss any of the content of your exam with anyone except your instructor. This includes text, chat, email and other online forums.  We expect you to respect and follow the [GRS Academic and Professional Conduct Code](http://www.bu.edu/cas/files/2017/02/GRS-Academic-Conduct-Code-Final.pdf). 
+
+Although you may NOT ask anyone directly, you are allowed to use external resources such as R codes on the Internet.  If you do use someone's code, please make sure you clearly cite the origin of the code.
+
+When you finish, please compile and submit the PDF file and the link to the GitHub repository that contains the entire analysis.
+
+
+## Introduction
+
+In this exam, you will act as both the client and the consultant for the data that you collected in the data collection exercise (20pts).  Please note that you are not allowed to change the data.  The goal of this exam is to demonstrate your ability to perform the statistical analysis that you learned in this class so far.  It is important to note that significance of the analysis is not the main goal of this exam but the focus is on the appropriateness of your approaches.
+
+### Data Description (10pts)
+
+Please explain what your data is about and what the comparison of interest is.  In the process, please make sure to demonstrate that you can load your data properly into R.
+
+```{r}
+#load data from my github
+leaf_size<-read.csv("https://raw.githubusercontent.com/jasonhaoyuli/MA-678-Midterm-exam/main/Leaf%20size.csv",header = TRUE)
+print(leaf_size)
+```
+Brief description of the leaf size dataset:
+The dataset that I collected is about the size of the leaves by measuring leaves from five different trees, and I also collect couples factors that may affect the size of leaves. The comparison of interest is that to whether different trees have different effects on the size of leaves, and also how individual factors affect the size of leaves.
+
+### EDA (10pts)
+
+Please create one (maybe two) figure(s) that highlights the contrast of interest.  Make sure you think ahead and match your figure with the analysis.  For example, if your model requires you to take a log, make sure you take log in the figure as well.
+
+```{r }
+#create a new column that calculate the size of the leaves by multiple the length and width of leaves
+leaf_size$size<-leaf_size$length*leaf_size$width
+#visualize size of leaves grouped by different tree
+library(tidyverse)
+ggplot(data=leaf_size)+
+  geom_boxplot(mapping=aes(x=factor(tree_id),y=size))+
+  labs(x="tree_id",y="size of leaf")
+#plot fitted model for each group(tree),which is no pooling model
+ggplot(data=leaf_size)+
+  geom_point(aes(x=number_of_veins, y=size, color = factor(tree_id)))+
+  geom_smooth(aes(x=number_of_veins, y=size, color = factor(tree_id)), formula = "y~x", method="lm", se=F)+
+  facet_wrap(~factor(tree_id))+
+  labs(title = "No Pooling", xlab="number_of_veins")
+```
+
+### Power Analysis (10pts)
+
+Please perform power analysis on the project.  Use 80% power, the sample size you used and infer the level of effect size you will be able to detect.  Discuss whether your sample size was enough for the problem at hand.  Please note that method of power analysis should match the analysis.  Also, please clearly state why you should NOT use the effect size from the fitted model.
+
+```{r}
+#install.packages("pwr")
+library(pwr)
+#doing a power analysis
+#n=25 since we do a two sample,two side power analysis
+#calculate the standard deviation of size of leaves
+sd<-sd(leaf_size$size)
+sd
+pwr.t.test(n=25,sig.level=0.05,power=0.8,type = "two.sample",alternative="two.sided")
+```
+The result shows the effect size we will detect is 1.17, under the hypothesis that we assume the mean population difference between different trees/group is 0, we have 80% chance to detect a effect size of 0.8 given the sample size is 50(25 for no difference group,25 for there is difference group).
+
+Reason why we should not use this effect size:
+from the power analysis, we know we have 80% chance to detect that variances between groups, which the difference between populations u1-u2 =d*sd=0.8*74.27=59.416. That difference is much large than we expected since we know size of leaves between similar kind of tree can be close, so we want to detect that small difference.
+
+### Modeling (10pts)
+
+Please pick a regression model that best fits your data and fit your model.  Please make sure you describe why you decide to choose the model. Also, if you are using GLM, make sure you explain your choice of link function as well.
+```{r}
+library(rstanarm)
+library(arm)
+leaf_size$treeid<-factor(leaf_size$tree_id)
+fit<-stan_lmer(size~number_of_veins+number_of_corners+(1+number_of_veins+number_of_corners|treeid),data=leaf_size,refresh=0)
+coef(fit)
+```
+
+Explaination of the chosen model: 
+By doing EDA, we see leaf sizes are very different across different groups. Thus, we want to fit a multilevel linear model to account these differences. The varying intercept reflect the difference between groups without considering the variance within groups. The varying slopes reflects the variances within the groups.
+
+
+
+
+### Validation (10pts)
+
+Please perform a necessary validation and argue why your choice of the model is appropriate.  
+
+```{r }
+#redisual plot
+par(mar=c(3,3,2,1), mgp=c(2,.7,0), tck=-.01)
+plot(fitted(fit),resid(fit),pch=20,main="Residuals")
+abline(0,0,col="red")
+#posterior predictive check
+pp_check(fit)
+```
+The residual shows the unequal spread, so the errors do not have equal variance. This might not be a good model, but it might be due to small sample size as we can see for lower and higer fitted value still have equal variance. But when we look at the posterior predictive check, the observed value fall within predictive value, so I still stick to this model since it describes multilevel data at its best.
+
+### Inference (10pts)
+
+Based on the result so far please perform statistical inference to compare the comparison of interest.
+
+```{r }
+#Bayesian posterior uncertainty intervals
+posterior_interval(fit)
+#visualize
+library(bayesplot)
+sim<-as.matrix(fit)
+mcmc_intervals(sim)
+```
+
+
+### Discussion (10pts)
+
+Please clearly state your conclusion and the implication of the result.
+
+conclusion: From the results of our model, we can conclude that there are factors such as number of veins indeed have effect on the size of the leaves, and size of leaves have large variances across different trees.
+
+### Limitations and future opportunity. (10pts)
+
+Please list concerns about your analysis.  Also, please state how you might go about fixing the problem in your future study.
+
+1.Sample size: since the sample sizes from the data collection exercise are very limited, we can see large variances across different tree, thus the statistical error from this dataset is very unequal as we'll expected.
+
+2.How to improve model: If we have more time, we can collect more data from different trees, and the species of tree is also important, if we collect the data from the same species but just different trees, there's also a lack of independence problem. 
+### Comments or questions
+If you have any comments or questions, please write them here.
+
